@@ -1,34 +1,30 @@
 (ns genjure.core
   (:gen-class))
 
+
 (defn crossover
-  "Takes the two genotypes [gt1, gt2] and crosses them using the vector
-  of crossing points provided."
-  ;; FIXME: That function is ugly as hell.
-  [gt1 gt2 cross-points]
-  (loop [gene (dec (count gt1))
-         new-genotype []
-         points (reverse (map #(- 19 %) cross-points))
-         hold false]
-    (if (< gene 0)
-      new-genotype
-      (if (= gene (last points))
-        (recur (dec gene)
-               (conj new-genotype (nth gt2 gene))
-               (pop points)
-               (not hold))
-        (if (true? hold)
-          (recur (dec gene)
-                 (conj new-genotype (nth gt2 gene))
-                 points hold)
-          (recur (dec gene)
-                 (conj new-genotype (nth gt1 gene))
-                 points hold))))))
+  "Produces a new vector based on the genotypes [gt1 gt2] taking the mask as
+  the crossover guide {1 = copy, 0 = not-copy}. The genes from [gt2] are copyed
+  to [gt1]."
+  [gt1 gt2 mask]
+  (let [inv-mask (mapv #(- 1 %) mask)
+        masked-gt1 (mapv * gt1 mask)
+        masked-gt2 (mapv * gt2 inv-mask)]
+    (mapv + masked-gt1 masked-gt2)))
+
+(crossover [1 2 3 4 5]
+           [9 8 7 6 0]
+           [0 1 0 1 0])
 
 
 ;; TODO: The mimimal swap window size is 2 genes. Maybe in the future that can
 ;; be improved to support 1 gene swaps.
-(defn crossover2
+;; FIXME: Strange behaviour regarding the hold=false transition. It seems that
+;; something is delaying the application of the value from g1->g2.
+
+;; The cross-points are needed to be inside a '(). Ex. (crossover g1 g2 '(2 5))
+
+(defn crossover
   [genotype1 genotype2 cross-points]
   (loop [gene 0
          new-genotype []
@@ -36,7 +32,7 @@
          hold false]
     (if (= gene (count genotype1))
       (do
-        (printf "END - %s = [%s, %s, %s]\n" gene new-genotype points hold)
+        (printf "%s = [%s, %s, %s]\n" gene new-genotype points hold)
         new-genotype)
       (if (= gene (first points))
         (do
