@@ -13,7 +13,12 @@
 ;;
 ;; Tree encoding = (+ (- 2 4) 5)
 
-(defn new-gene [] (* (rand) 1))
+;;(defn new-gene [] (* (rand) 100))
+
+(defn new-gene [] (rand-int 10))
+
+;; Simple fitness function for testing
+(defn fitness-function [gt] [(apply * gt) gt])
 
 
 ;; This crossover function is independent of the encoding we are using.
@@ -85,32 +90,72 @@
 ;; The best chromosomes are selected and copyed to the next generation.
 ;; This will be applyied before every crossover and mutation.
 
-(defn tournament-selection
-  [population size p]
-  (loop [n 0 contenders []]
-    (if (= n size)
-      (let [p (rand)]
-        (cond
-          ()
-          )
-        )
 
-      )
-    )
-  ;; Select random individuals
-  )
+;; Return the best individuals for breeding without the fitness value.
+;; TODO: Improve performance not calculating the fitness each time.
+;; Provably the genotypes will change a lot and it's not worth it to
+;; implement that optimization. Without it, the code is much cleaner.
+;;(mapv second (filter #(<= threshold (first %)) sorted-pop))
+(defn steady-state-selection
+  [population threshold]
+  (loop [n 0 eval-pop []]
+    (if (< n (count population))
+
+      ;; Evaluate all individuals.
+      (do
+        ;;(printf "%s - %s\n" n eval-pop)
+        (recur (inc n) (conj eval-pop (fitness-function (nth population n)))))
+
+      ;; Sort them according to it's fitness.
+      (do
+        (let [sorted-pop (vec (reverse (sort-by first eval-pop)))
+              num-gt (count sorted-pop)]
+
+          ;; FIXME: I have a problem with the types. population is a vector but
+          ;; when (sort-by first eval-pop) is applyed is converted into a seq.
+          ;; Something is not going well when I (pop best-gt) in the loop below.
+
+          ;;(printf "\teval-pop: %s\n" eval-pop)
+          ;;(printf "\tnum-gt: %s\n" num-gt)
+          ;;(printf "\tsorted-pop: %s\n" sorted-pop)
+
+          (loop [i 0 best-gt sorted-pop]
+            (if (< i (/ num-gt 2))
+              (recur (inc i) (pop best-gt))
+              (if (odd? (count best-gt))
+                (mapv second (pop best-gt))
+                (mapv second best-gt)))))))))
+
+(defn breed-next-gen
+  [population]
+    (loop [n 0 next-gen population] ;; Here we apply the concept of elitism.
+      (if (>= n (count population))
+        next-gen
+        (let [new-gt1 (crossover (nth population n)
+                                 (nth population (inc n))
+                                 [1 1 1 1 1 0 0 0 0 0])
+              new-gt2 (crossover (nth population n)
+                                 (nth population (inc n))
+                                 [0 0 0 0 0 1 1 1 1 1])]
+          (recur (+ n 2) (conj next-gen new-gt1 new-gt2))))))
 
 (defn evolve
-  [population generation]
-  (if (= 0 generation)
-    ;; Show best genotype
-    (evolve
-      (replace-worst
-        (evaluate
-          (mutation
-            (crossover
-              (tournament-selection)))))
-      (dec generation))))
+  [population generations]
+  (loop [n 0 current-gen population]
+    (if (= n generations)
+      (first current-gen)
+      (let [selected-gen (steady-state-selection current-gen 2)
+            breeded-gen (breed-next-gen selected-gen)
+            mutated-gen (mapv #(mutate % 0.1) breeded-gen)]
+        ;;(printf "current-gen: %s\n" current-gen)
+        ;;(printf "\tselected-gen: %s\n" selected-gen)
+        ;;(printf "\tbreeded-gen: %s\n" breeded-gen)
+        ;;(printf "\tmutated-gen: %s\n" mutated-gen)
+        (recur (inc n) mutated-gen)))))
+
+
+
+(evolve (generate-population 500 10) 200)
 
 
 (defn -main
