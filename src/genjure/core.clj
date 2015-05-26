@@ -8,15 +8,13 @@
 (defn gene-fn [] (rand))
 (defn fitness-fn [gt] [(apply * gt) gt])
 
-
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
 
-
   (def confmap {:population-size 250
                 :genotype-length 10
-                :generations 20000
+                :generations 50
                 :gene-function gene-fn
                 :fitness-function fitness-fn
                 :mask (simple-mask 10)

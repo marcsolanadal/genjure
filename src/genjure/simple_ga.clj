@@ -1,6 +1,42 @@
 (ns genjure.simple-ga
   (:gen-class))
 
+;; It creates a vector of length [len] filled by the elements returned by the
+;; function [gene-function]. This function it is passed by the user in the
+;; parameter map of the evolve function.
+;; For simple GA the function is alright but it's possible that it will need
+;; change in the future with the addition of trees for genetic programming.
+;;
+;; We implemented two versions of this function. Due that this functions is only
+;; used in the creation of the initial random population, we think that some
+;; performance can be spared in order to improve readability.
+;;
+;; Function tested: (new-genotype 100 rand)
+;; Tested implementations:
+;;    loop/recur    16.32us
+;;    idiomatic     46.99us <-- Preferred solution
+
+(defn new-genotype
+  "Generates a new genotype of a given length [len] with the gene structure
+  defined in the [gene-function] function."
+  [len gene-function] (vec (repeatedly len gene-function)))
+
+;; The population is created randomly at first using this function. Then it will
+;; be evolved using the evolve function. This function will be used at the start
+;; of the evolve function to create the first generation.
+;; In case of multiple islands we will create different populations for each
+;; island.
+
+(defn random-population
+  "Generates a population of the specified number of genotypes [size]. Each
+  genotype consisting in a chain of genes with length [len].
+  The parameter [gene-function] is required for the function (new-genotype)."
+  [size len gene-function]
+  (loop [n 0 population []]
+    (if (= n size)
+      population
+      (recur (inc n) (conj population (new-genotype len gene-function))))))
+
 ;; This crossover function is independent of the encoding we are using.
 ;; It has the strenght of being able to change the mask vector. If we do so, we
 ;; can explore how different crossover points affect the performance of our GA.
@@ -49,36 +85,20 @@
         (recur (inc n) (assoc mutated-gt n (gene-function)))
         (recur (inc n) mutated-gt)))))
 
-;; It creates a vector of length [len] filled by the elements returned by the
-;; function [gene-function]. This function it is passed by the user in the
-;; parameter map of the evolve function.
-;; For simple GA the function is alright but it's possible that it will need
-;; change in the future with the addition of trees for genetic programming.
 
-(defn new-genotype
-  "Generates a new genotype of a given length [len] with the gene structure
-  defined in the [new-gene] function."
-  [len gene-function]
-  (loop [n 0 genotype []]
-    (if (= n len)
-      genotype
-      (recur (inc n) (conj genotype (gene-function))))))
+;; FIXME: This function will be called once each generation. The most expensive
+;; function is the fitness-function. It is called for each genotype each
+;; generation, so optimizing that function is the priority.
 
-;; The population is created randomly at first using this function. Then it will
-;; be evolved using the evolve function. This function will be used at the start
-;; of the evolve function to create the first generation.
-;; In case of multiple islands we will create different populations for each
-;; island.
+;; TODO: That loop need's to be as parallel as possible.
 
-(defn random-population
-  "Generates a population of the specified number of genotypes [size]. Each
-  genotype consisting in a chain of genes with length [len].
-  The parameter [gene-function] is required for the function (new-genotype)."
-  [size len gene-function]
-  (loop [n 0 population []]
-    (if (= n size)
-      population
-      (recur (inc n) (conj population (new-genotype len gene-function))))))
+(defn evaluate
+  [population fitness-function]
+  (let [pop-size (count population)]
+    (loop [n 0 eval-pop []]
+      (if (< n pop-size)
+        (recur (inc n) (conj eval-pop (fitness-function (nth population n))))
+        eval-pop))))
 
 ;; In this simple implementation we used stead-state selection, where only the
 ;; best individuals are selected and breeded. The worst individuals are
@@ -87,12 +107,12 @@
 ;; discarted.
 ;; We have also applyed the concept of elitism, where the best genotypes are
 ;; selected and copyed to the next generation.
-;; First, it evaluates all the genotypes passed from the parameter [population].
-;; Second, it sorts all the genotypes according to it's fitness. That fitness is
-;; calculated using the [fitness-function] function from the parameters. We are
-;; using vectors, so we need to reverse the vector in order to when we use (pop)
-;; we drop the worst genotype not the best.
-;; Third, we drop a percent of the total population using the function (pop).
+;; First, it sorts all the genotypes from the [evaluated-population] parameter
+;; accordding to it's fitness value. This value is calculated using the
+;; [fitness-function] function from the parameters. We are using vectors, so we
+;; need to reverse the vector in order to when we use (pop) we drop the worst
+;; genotype not the best.
+;; Second, we drop a percent of the total population using the function (pop).
 ;; The genotypes that are not droped will be the winners of the tournament for
 ;; this generation.
 ;; Finally, if the number of genotypes is odd we drop one more genotype to make
@@ -104,25 +124,19 @@
 ;; it. We think that because the genotypes will likely change a lot and the
 ;; access to a two level vector several times can be expensive.
 
-;; TODO: This function can be splitted into evaluation and selection.
 (defn tournament
   "Takes all the genotypes [population] of the current generation and evaluates
   them with the [fitness-function]. The best genotypes are selected based on the
   [percent-winners] value and selected for breeding. The rest are discarted."
-  [population fitness-function percent-winners]
-  (loop [n 0 eval-pop []]
-    (if (< n (count population))
-      ;; Evaluate all individuals.
-        (recur (inc n) (conj eval-pop (fitness-function (nth population n))))
-      ;; Sort them according to it's fitness.
-        (let [sorted-pop (vec (reverse (sort-by first eval-pop)))
-              num-winners (/ (count sorted-pop) (/ 100 percent-winners))]
-          (loop [i 0 best-gt sorted-pop]
-            (if (< i num-winners)
-              (recur (inc i) (pop best-gt)) ;; Here we apply elitism.
-              (if (odd? (count best-gt))
-                (mapv second (pop best-gt))
-                (mapv second best-gt))))))))
+  [evaluated-population percent-winners]
+  (let [sorted-pop (vec (reverse (sort-by first evaluated-population)))
+        num-winners (/ (count sorted-pop) (/ 100 percent-winners))]
+    (loop [i 0 best-gt sorted-pop]
+      (if (< i num-winners)
+        (recur (inc i) (pop best-gt)) ;; Here we apply elitism.
+        (if (odd? (count best-gt))
+          (mapv second (pop best-gt))
+          (mapv second best-gt))))))
 
 ;; We breed the next generation using the best genotypes of the current
 ;; generation. We generate two genotypes from each pair of genotypes. We use the
@@ -161,7 +175,8 @@
     (loop [n 0 current-gen population]
       (if (= n generations)
         (first current-gen)
-        (let [selected-gen (tournament current-gen fitness-function xcent)
+        (let [evaluated-gen (evaluate current-gen fitness-function)
+              selected-gen (tournament evaluated-gen xcent)
               breeded-gen (breed-next-gen selected-gen mask inv-mask)
               mutated-gen (mapv #(mutate % mut-prov gene-function) breeded-gen)]
           (if (= n (- generations 1))
