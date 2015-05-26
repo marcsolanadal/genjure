@@ -1,7 +1,6 @@
 (ns genjure.simple-ga
   (:gen-class))
 
-
 ;; This crossover function is independent of the encoding we are using.
 ;; It has the strenght of being able to change the mask vector. If we do so, we
 ;; can explore how different crossover points affect the performance of our GA.
@@ -16,44 +15,54 @@
         masked-gt2 (mapv * gt2 mask)]
     (mapv + masked-gt1 masked-gt2)))
 
+;; The following functions are mask generators for the function crossover.
+;; They will be passed from the evolve map :mask and :inv-mask key values.
+;;
+;;    simple-mask           [1 1 1 1 0 0 0 0]
+;;    inv-simple-mask       [0 0 0 0 1 1 1 1]
+;;    interleaved-mask      [1 0 1 0 1 0 1 0]
+;;    inv-interleaved-mask  [0 1 0 1 0 1 0 1]
+
+(defn simple-mask [n] (vec (concat (repeat (/ n 2) 1) (repeat (/ n 2) 0))))
+(defn inv-simple-mask [n] (vec (reverse (simple-mask n))))
+(defn interleaved-mask [n] (vec (take n (interpose 0 (repeat 1)))))
+(defn inv-interleaved-mask [n] (vec (reverse (interleaved-mask n))))
 
 ;; The mutation is used to mutate the genotypes of each individual after the
 ;; breeding of the next generation is done.
 ;; The function takes the genotype [gt] and goes through all the elmenets of it.
 ;; In each element a random number is generated. If this number is smaller or
-;; equal to the mutation rate the (new-gene) function is called and a new gene
-;; is assigned to the element of the genotype.
-;; We are passing (new-gene) as a function parameter to abstact the genotypes
-;; we are mutating.
+;; equal to the mutation rate the (gene-function) function is called and a new
+;; gene is assigned to the element of the genotype.
+;; We are passing (gene-function) as a function parameter to abstact the
+;; genotypes we are mutating.
 
 (defn mutate
   "Takes a genotype [gt] and modifies it based on the mutation-rate [rate].
   The rate input value must range between 0 and 1. To modify  one of the
-  elements it uses the [new-gene] function."
-  [gt rate new-gene]
+  elements it uses the [gene-function] function."
+  [gt rate gene-function]
   (loop [n 0 mutated-gt gt]
     (if (= n (count gt))
       mutated-gt
       (if (<= (rand) rate)
-        (recur (inc n) (assoc mutated-gt n (new-gene)))
+        (recur (inc n) (assoc mutated-gt n (gene-function)))
         (recur (inc n) mutated-gt)))))
 
-
 ;; It creates a vector of length [len] filled by the elements returned by the
-;; function [new-gene]. This function it is passed by the user in the parameter
-;; map of the evolve function.
+;; function [gene-function]. This function it is passed by the user in the
+;; parameter map of the evolve function.
 ;; For simple GA the function is alright but it's possible that it will need
 ;; change in the future with the addition of trees for genetic programming.
 
 (defn new-genotype
   "Generates a new genotype of a given length [len] with the gene structure
   defined in the [new-gene] function."
-  [len new-gene]
+  [len gene-function]
   (loop [n 0 genotype []]
     (if (= n len)
       genotype
-      (recur (inc n) (conj genotype (new-gene))))))
-
+      (recur (inc n) (conj genotype (gene-function))))))
 
 ;; The population is created randomly at first using this function. Then it will
 ;; be evolved using the evolve function. This function will be used at the start
@@ -64,14 +73,12 @@
 (defn random-population
   "Generates a population of the specified number of genotypes [size]. Each
   genotype consisting in a chain of genes with length [len].
-  The parameter [new-gene] is required for the function (new-genotype)."
-  [size len new-gene]
-  (loop [n 0
-         population []]
+  The parameter [gene-function] is required for the function (new-genotype)."
+  [size len gene-function]
+  (loop [n 0 population []]
     (if (= n size)
       population
-      (recur (inc n) (conj population (new-genotype len new-gene))))))
-
+      (recur (inc n) (conj population (new-genotype len gene-function))))))
 
 ;; In this simple implementation we used stead-state selection, where only the
 ;; best individuals are selected and breeded. The worst individuals are
@@ -97,8 +104,11 @@
 ;; it. We think that because the genotypes will likely change a lot and the
 ;; access to a two level vector several times can be expensive.
 
+;; TODO: This function can be splitted into evaluation and selection.
 (defn tournament
-  ""
+  "Takes all the genotypes [population] of the current generation and evaluates
+  them with the [fitness-function]. The best genotypes are selected based on the
+  [percent-winners] value and selected for breeding. The rest are discarted."
   [population fitness-function percent-winners]
   (loop [n 0 eval-pop []]
     (if (< n (count population))
@@ -109,37 +119,55 @@
               num-winners (/ (count sorted-pop) (/ 100 percent-winners))]
           (loop [i 0 best-gt sorted-pop]
             (if (< i num-winners)
-              (recur (inc i) (pop best-gt)) ;; Here we apply the elitism.
+              (recur (inc i) (pop best-gt)) ;; Here we apply elitism.
               (if (odd? (count best-gt))
                 (mapv second (pop best-gt))
                 (mapv second best-gt))))))))
 
+;; We breed the next generation using the best genotypes of the current
+;; generation. We generate two genotypes from each pair of genotypes. We use the
+;; mask in the parameters to do the crossovers between genotypes. Notices that
+;; one mask is the inverse of the other. We pass the masks from the parameters
+;; because we don't want to calculate them inside the loop. This is for
+;; performance reasons.
 
-;; TODO: Parametrize the implementation of the mask.
 (defn breed-next-gen
-  [population]
-    (loop [n 0 next-gen population]
-      (if (>= n (count population))
-        next-gen
-        (let [new-gt1 (crossover (nth population n)
-                                 (nth population (inc n))
-                                 [1 1 1 1 1 0 0 0 0 0])
-              new-gt2 (crossover (nth population n)
-                                 (nth population (inc n))
-                                 [0 0 0 0 0 1 1 1 1 1])]
-          (recur (+ n 2) (conj next-gen new-gt1 new-gt2))))))
+  "Generates the next generation based on the current one [population]. It takes
+  a [mask] and [inv-mask] to do the crossover of genotypes."
+  [population mask inv-mask]
+  (loop [n 0 next-gen population]
+    (if (>= n (count population))
+      next-gen
+      (let [new-gt1 (crossover (nth population n)
+                               (nth population (inc n))
+                               mask)
+            new-gt2 (crossover (nth population n)
+                               (nth population (inc n))
+                               inv-mask)]
+        (recur (+ n 2) (conj next-gen new-gt1 new-gt2))))))
 
 
-;; TODO: Implement a map as a list of all the relevant parameters for the
-;; configuration of the GA.
+;; TODO: Think a way to implement epoch for the async island method.
 (defn evolve
-  [population generations]
-  (loop [n 0 current-gen population]
-    (if (= n generations)
-      (first current-gen)
-      ;; FIXME: The mutation is performed after the tournament, therefore the
-      ;; last result can be a mutated solution not the ideal one.
-      (let [selected-gen (steady-state-selection current-gen 2)
-            breeded-gen (breed-next-gen selected-gen)
-            mutated-gen (mapv #(mutate % 0.1) breeded-gen)]
-        (recur (inc n) mutated-gen)))))
+  ""
+  [parameters-map]
+  (let [{size :population-size gt-len :genotype-length generations :generations
+         gene-function :gene-function fitness-function :fitness-function
+         mask :mask inv-mask :inv-mask xcent :tournament-percent-selected
+         mut-prov :mutation-provability} parameters-map
+        population (random-population size gt-len gene-function)]
+
+    ;; Looping through all generations
+    (loop [n 0 current-gen population]
+      (if (= n generations)
+        (first current-gen)
+        (let [selected-gen (tournament current-gen fitness-function xcent)
+              breeded-gen (breed-next-gen selected-gen mask inv-mask)
+              mutated-gen (mapv #(mutate % mut-prov gene-function) breeded-gen)]
+          (if (= n (- generations 1))
+            (recur (inc n) selected-gen)
+            (recur (inc n) mutated-gen)))))))
+
+
+
+

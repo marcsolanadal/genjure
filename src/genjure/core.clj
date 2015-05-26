@@ -2,29 +2,33 @@
   (:require [genjure.simple-ga :refer :all])
   (:gen-class))
 
+(use 'criterium.core)
 
-(defn new-gene [] (rand-int 10))
-(defn fitness-function [gt] [(apply * gt) gt])
+;; This example functions find the greatest combination of 10 numbers.
+(defn gene-fn [] (rand))
+(defn fitness-fn [gt] [(apply * gt) gt])
+
 
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
 
-  (use 'criterium.core)
 
-  (evolve :population-size 500
-          :genotype-lenght 10
-          :gene-function 'new-gene
-          :fitness-function 'fitness-fn
-          :tournament-xcent-selected 50
-          :crossover-type "half/interleaved"
-          :mutation-rate 0.01)
+  (def confmap {:population-size 250
+                :genotype-length 10
+                :generations 20000
+                :gene-function gene-fn
+                :fitness-function fitness-fn
+                :mask (simple-mask 10)
+                :inv-mask (inv-simple-mask 10)
+                :tournament-percent-selected 50
+                :mutation-provability 0.01})
 
-  (evolve (generate-population 500 10) 200)
+  (/ (apply + (evolve confmap)) 10)
 
   ;; Sample genotypes for performance testings
-  (def gt1 (generate-genotype 10))
-  (def gt2 (generate-genotype 10))
+  ;;(def gt1 (generate-genotype 10))
+  ;;(def gt2 (generate-genotype 10))
 
   ;; (with-progress-reporting (bench
   ;;                          (crossover gt1 gt2 [1 1 1 0 0 1 0 1 0 0])
