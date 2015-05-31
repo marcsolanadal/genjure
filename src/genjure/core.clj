@@ -24,6 +24,17 @@
 
   (/ (apply + (evolve confmap)) 10)
 
+  (def p1 (random-population  10 2 rand))
+  (def ep1 (evaluate p1 #(apply * %)))
+  (println ep1)
+  (tournament-selection ep1 4)
+
+  (with-progress-reporting (bench
+                             ;;(truncation-selection ep1 4) ;; 247.42 us
+                             ;;(tournament-selection ep1 4) ;; 5.07 us
+                             (rank-selection ep1 4)
+                             :verbose))
+
   ;; Sample genotypes for performance testings
   ;;(def gt1 (generate-genotype 10))
   ;;(def gt2 (generate-genotype 10))

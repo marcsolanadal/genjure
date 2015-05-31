@@ -97,8 +97,14 @@
   (let [pop-size (count population)]
     (loop [n 0 eval-pop []]
       (if (< n pop-size)
-        (recur (inc n) (conj eval-pop (fitness-function (nth population n))))
+        (recur (inc n)
+               (conj eval-pop (conj []
+                                    (fitness-function (nth population n))
+                                    (nth population n))))
         eval-pop))))
+
+;; TODO: This function does not work with tournament-selection.
+(defn evaluate2 [p fitness-function] (vec (pmap fitness-function p)))
 
 ;; In this simple implementation we used stead-state selection, where only the
 ;; best individuals are selected and breeded. The worst individuals are
@@ -124,12 +130,12 @@
 ;; it. We think that because the genotypes will likely change a lot and the
 ;; access to a two level vector several times can be expensive.
 
-(defn tournament
+(defn truncation-selection
   "Takes all the genotypes [population] of the current generation and evaluates
   them with the [fitness-function]. The best genotypes are selected based on the
   [percent-winners] value and selected for breeding. The rest are discarted."
-  [evaluated-population percent-winners]
-  (let [sorted-pop (vec (reverse (sort-by first evaluated-population)))
+  [eval-gt percent-winners]
+  (let [sorted-pop (vec (reverse (sort-by first eval-gt)))
         num-winners (/ (count sorted-pop) (/ 100 percent-winners))]
     (loop [i 0 best-gt sorted-pop]
       (if (< i num-winners)
@@ -137,6 +143,55 @@
         (if (odd? (count best-gt))
           (mapv second (pop best-gt))
           (mapv second best-gt))))))
+
+(defn sorted-random-genotypes
+  "Takes all the evaluated genotypes [eval-gt] of the current generation
+  and selects [num-gt] randomly for the tournament. Returns the selected
+  genotypes sorted with the fitness value."
+  [eval-gt num-gt]
+  (let [np (count eval-gt)]
+    (loop [n 0 selected-gt []]
+      (if (< n num-gt)
+        (recur (inc n) (conj selected-gt (nth eval-gt (rand np))))
+        (sort-by first selected-gt)))))
+
+(defn tournament-selection
+  "Returns the best genotype of the given evaluated ones [eval-gt]."
+  [eval-gt num-contendents]
+  (second (last (sorted-random-genotypes eval-gt num-contendents))))
+
+;; Selecting the winner based on provablilty
+;; 0.5, 0.25, 0.125, 0.0625, 0.03125 ...
+;; FIXME: Implement variable provability
+(defn rank-selection
+  "Takes the evaluated genotypes [eval-gt] and the number of contendents for the
+  selection [num-contendents]. It calls the sorted-random-genotypes function
+  to get the random genotypes ordered for their fitness.
+  It returns the chosen genotype based on the provability. That provability is
+  calculated using a series of flipping coin evaluations. It takes the number
+  when the coin face is 0. Otherwise, it continues until the number of
+  contendents is reached, in this case the lowest fitness genotypes is chosen."
+  [eval-gt num-contendents]
+  (let [num-gt (count eval-gt)
+        contendents (sorted-random-genotypes eval-gt num-contendents)]
+    (loop [m 0 p (rand-int 2)]
+      (if (or (= m num-contendents) (= p 0))
+        (second (nth (reverse contendents) m))
+        (recur (inc m) (rand-int 2))))))
+
+(defn breed-next-gen2
+  ""
+  [eval-population mask num-part]
+  (loop [n 0 next-gen []]
+    (let [parent1 (rank-selection eval-population num-part)
+          parent2 (rank-selection eval-population num-part)]
+      (if (< (count eval-population) (count next-gen))
+        next-gen
+        (recur (inc n)
+               (conj next-gen
+                     parent1
+                     parent2
+                     (crossover parent1 parent2 mask)))))))
 
 ;; We breed the next generation using the best genotypes of the current
 ;; generation. We generate two genotypes from each pair of genotypes. We use the
@@ -174,13 +229,12 @@
     ;; Looping through all generations
     (loop [n 0 current-gen population]
       (if (= n generations)
-        (first current-gen)
+        (first (sort-by first current-gen))
         (let [evaluated-gen (evaluate current-gen fitness-function)
-              selected-gen (tournament evaluated-gen xcent)
-              breeded-gen (breed-next-gen selected-gen mask inv-mask)
+              breeded-gen (breed-next-gen2 evaluated-gen mask 20)
               mutated-gen (mapv #(mutate % mut-prov gene-function) breeded-gen)]
           (if (= n (- generations 1))
-            (recur (inc n) selected-gen)
+            (recur (inc n) breeded-gen)
             (recur (inc n) mutated-gen)))))))
 
 
