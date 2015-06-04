@@ -12,9 +12,9 @@
   "I don't do a whole lot ... yet."
   [& args]
 
-  (def confmap {:population-size 250
-                :genotype-length 10
-                :generations 50
+  (def confmap {:population-size 1000
+                :genotype-length 30
+                :generations 300
                 :gene-function gene-fn
                 :fitness-function fitness-fn
                 :mask (simple-mask 10)
@@ -32,7 +32,7 @@
   (with-progress-reporting (bench
                              ;;(truncation-selection ep1 4) ;; 247.42 us
                              ;;(tournament-selection ep1 4) ;; 5.07 us
-                             (rank-selection ep1 4)
+                             (rank-selection ep1 4 0.6) ;; 5.982 us
                              :verbose))
 
   ;; Sample genotypes for performance testings

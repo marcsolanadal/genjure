@@ -157,41 +157,48 @@
 
 (defn tournament-selection
   "Returns the best genotype of the given evaluated ones [eval-gt]."
-  [eval-gt num-contendents]
-  (second (last (sorted-random-genotypes eval-gt num-contendents))))
+  [eval-gt num-contenders]
+  (second (last (sorted-random-genotypes eval-gt num-contenders))))
 
-;; Selecting the winner based on provablilty
-;; 0.5, 0.25, 0.125, 0.0625, 0.03125 ...
-;; FIXME: Implement variable provability
 (defn rank-selection
-  "Takes the evaluated genotypes [eval-gt] and the number of contendents for the
-  selection [num-contendents]. It calls the sorted-random-genotypes function
-  to get the random genotypes ordered for their fitness.
-  It returns the chosen genotype based on the provability. That provability is
-  calculated using a series of flipping coin evaluations. It takes the number
-  when the coin face is 0. Otherwise, it continues until the number of
-  contendents is reached, in this case the lowest fitness genotypes is chosen."
-  [eval-gt num-contendents]
-  (let [num-gt (count eval-gt)
-        contendents (sorted-random-genotypes eval-gt num-contendents)]
-    (loop [m 0 p (rand-int 2)]
-      (if (or (= m num-contendents) (= p 0))
-        (second (nth (reverse contendents) m))
-        (recur (inc m) (rand-int 2))))))
+  "Takes the evaluated genotypes [eval-gt] and the number of contenders for the
+  random selection [num-contenders]. If [provability-taking-best] is specified,
+  a random seed between 0 and 1 will be generated and stored. This seed is
+  compared with the provability. If the rand-seed is lower than the current
+  provability it loops and reduces by a half the current p, the process goes on
+  until the limit of contenders is reached or a greater number is found.
+  In case no [provability-taking-best] is specified, we call the function with
+  the default value of 0.6."
+  ([eval-gt num-contenders]
+   (rank-selection eval-gt num-contenders 0.6))
+  ([eval-gt num-contenders provability-taking-best]
+   (let [num-gt (count eval-gt)
+         contenders (sorted-random-genotypes eval-gt num-contenders)
+         rand-seed (rand)
+         inv-prob-best (- 1 provability-taking-best)]
+     (loop [n 0 p inv-prob-best]
+       (if (or (< rand-seed p) (= n num-gt))
+         (recur (inc n) (/ p 2))
+         (second (nth (reverse contenders) n (first contenders))))))))
 
-(defn breed-next-gen2
+(def loler (evaluate (random-population 10 2 rand) #(apply * %)))
+(println loler)
+
+(breed-next-gen loler [0 1] 4)
+
+(defn breed-next-gen
   ""
-  [eval-population mask num-part]
-  (loop [n 0 next-gen []]
-    (let [parent1 (rank-selection eval-population num-part)
-          parent2 (rank-selection eval-population num-part)]
-      (if (< (count eval-population) (count next-gen))
-        next-gen
-        (recur (inc n)
-               (conj next-gen
-                     parent1
-                     parent2
-                     (crossover parent1 parent2 mask)))))))
+  [eval-population mask num-contenders]
+  (let [population-count (count eval-population)]
+    (loop [n 0 next-gen []]
+      ;;(printf "%s - %s\n" n next-gen)
+      (let [parent1 (rank-selection eval-population num-contenders)
+            parent2 (rank-selection eval-population num-contenders)
+            child (crossover parent1 parent2 mask)]
+        ;;(printf "\t%s + %s = %s\n" parent1 parent2 child)
+        (if (< population-count (count next-gen))
+          next-gen
+          (recur (inc n) (conj next-gen parent1 parent2 child)))))))
 
 ;; We breed the next generation using the best genotypes of the current
 ;; generation. We generate two genotypes from each pair of genotypes. We use the
@@ -200,7 +207,7 @@
 ;; because we don't want to calculate them inside the loop. This is for
 ;; performance reasons.
 
-(defn breed-next-gen
+(defn breed-next-gen-only-truncation
   "Generates the next generation based on the current one [population]. It takes
   a [mask] and [inv-mask] to do the crossover of genotypes."
   [population mask inv-mask]
@@ -220,9 +227,14 @@
 (defn evolve
   ""
   [parameters-map]
-  (let [{size :population-size gt-len :genotype-length generations :generations
-         gene-function :gene-function fitness-function :fitness-function
-         mask :mask inv-mask :inv-mask xcent :tournament-percent-selected
+  (let [{size :population-size
+         gt-len :genotype-length
+         generations :generations
+         gene-function :gene-function
+         fitness-function :fitness-function
+         mask :mask
+         inv-mask :inv-mask
+         xcent :tournament-percent-selected
          mut-prov :mutation-provability} parameters-map
         population (random-population size gt-len gene-function)]
 
@@ -231,7 +243,7 @@
       (if (= n generations)
         (first (sort-by first current-gen))
         (let [evaluated-gen (evaluate current-gen fitness-function)
-              breeded-gen (breed-next-gen2 evaluated-gen mask 20)
+              breeded-gen (breed-next-gen evaluated-gen mask 20)
               mutated-gen (mapv #(mutate % mut-prov gene-function) breeded-gen)]
           (if (= n (- generations 1))
             (recur (inc n) breeded-gen)
