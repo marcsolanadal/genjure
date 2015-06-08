@@ -85,12 +85,9 @@
         (recur (inc n) (assoc mutated-gt n (gene-function)))
         (recur (inc n) mutated-gt)))))
 
-
 ;; FIXME: This function will be called once each generation. The most expensive
 ;; function is the fitness-function. It is called for each genotype each
 ;; generation, so optimizing that function is the priority.
-
-;; TODO: That loop need's to be as parallel as possible.
 
 (defn evaluate
   [population fitness-function]
@@ -102,9 +99,6 @@
                                     (fitness-function (nth population n))
                                     (nth population n))))
         eval-pop))))
-
-;; TODO: This function does not work with tournament-selection.
-(defn evaluate2 [p fitness-function] (vec (pmap fitness-function p)))
 
 ;; In this simple implementation we used stead-state selection, where only the
 ;; best individuals are selected and breeded. The worst individuals are
@@ -144,21 +138,27 @@
           (mapv second (pop best-gt))
           (mapv second best-gt))))))
 
-(defn sorted-random-genotypes
+(defn random-genotypes
   "Takes all the evaluated genotypes [eval-gt] of the current generation
-  and selects [num-gt] randomly for the tournament. Returns the selected
-  genotypes sorted with the fitness value."
+  and selects [num-gt] randomly for the tournament. Returns a vector of the
+  selected genotypes."
   [eval-gt num-gt]
   (let [np (count eval-gt)]
     (loop [n 0 selected-gt []]
       (if (< n num-gt)
         (recur (inc n) (conj selected-gt (nth eval-gt (rand np))))
-        (sort-by first selected-gt)))))
+        selected-gt))))
+
+(defn sort-by-fitness
+  "Sorts the evaluated population of genotypes [eval-gt] according to their
+  fitness."
+  [eval-gt]
+  (sort-by first eval-gt))
 
 (defn tournament-selection
   "Returns the best genotype of the given evaluated ones [eval-gt]."
   [eval-gt num-contenders]
-  (second (last (sorted-random-genotypes eval-gt num-contenders))))
+  (second (last (sort-by-fitness (random-genotypes eval-gt num-contenders)))))
 
 (defn rank-selection
   "Takes the evaluated genotypes [eval-gt] and the number of contenders for the
@@ -173,7 +173,7 @@
    (rank-selection eval-gt num-contenders 0.6))
   ([eval-gt num-contenders provability-taking-best]
    (let [num-gt (count eval-gt)
-         contenders (sorted-random-genotypes eval-gt num-contenders)
+         contenders (sort-by-fitness (random-genotypes eval-gt num-contenders))
          rand-seed (rand)
          inv-prob-best (- 1 provability-taking-best)]
      (loop [n 0 p inv-prob-best]
@@ -181,24 +181,17 @@
          (recur (inc n) (/ p 2))
          (second (nth (reverse contenders) n (first contenders))))))))
 
-(def loler (evaluate (random-population 10 2 rand) #(apply * %)))
-(println loler)
-
-(breed-next-gen loler [0 1] 4)
-
 (defn breed-next-gen
   ""
   [eval-population mask num-contenders]
   (let [population-count (count eval-population)]
     (loop [n 0 next-gen []]
-      ;;(printf "%s - %s\n" n next-gen)
       (let [parent1 (rank-selection eval-population num-contenders)
             parent2 (rank-selection eval-population num-contenders)
-            child (crossover parent1 parent2 mask)]
-        ;;(printf "\t%s + %s = %s\n" parent1 parent2 child)
+            offspring (crossover parent1 parent2 mask)]
         (if (< population-count (count next-gen))
           next-gen
-          (recur (inc n) (conj next-gen parent1 parent2 child)))))))
+          (recur (inc n) (conj next-gen parent1 parent2 offspring)))))))
 
 ;; We breed the next generation using the best genotypes of the current
 ;; generation. We generate two genotypes from each pair of genotypes. We use the
