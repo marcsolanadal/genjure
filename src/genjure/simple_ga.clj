@@ -1,6 +1,9 @@
 (ns genjure.simple-ga
   (:gen-class))
 
+;; NEW-GENOTYPE
+;; ============
+;;
 ;; It creates a vector of length [len] filled by the elements returned by the
 ;; function [gene-function]. This function it is passed by the user in the
 ;; parameter map of the evolve function.
@@ -19,24 +22,35 @@
 (defn new-genotype
   "Generates a new genotype of a given length [len] with the gene structure
   defined in the [gene-function] function."
-  [len gene-function] (vec (repeatedly len gene-function)))
+  [len gene-function] (vec (repeatedly len #(gene-function))))
 
+;; RANDOM-POPULATION
+;; =================
+;;
 ;; The population is created randomly at first using this function. Then it will
 ;; be evolved using the evolve function. This function will be used at the start
 ;; of the evolve function to create the first generation.
 ;; In case of multiple islands we will create different populations for each
 ;; island.
+;;
+;; We implemented two versions of this function. Due that this functions is only
+;; used in the creation of the initial random population, we think that some
+;; performance can be spared in order to improve readability.
+;;
+;; Function tested: (random-population 1000 2 rand)
+;; Tested implementations:
+;;    loop/recur    52.20ns
+;;    idiomatic     53.35ns <-- Preferred solution
 
 (defn random-population
   "Generates a population of the specified number of genotypes [size]. Each
   genotype consisting in a chain of genes with length [len].
   The parameter [gene-function] is required for the function (new-genotype)."
-  [size len gene-function]
-  (loop [n 0 population []]
-    (if (= n size)
-      population
-      (recur (inc n) (conj population (new-genotype len gene-function))))))
+  [size len gene-function] (repeatedly size #(new-genotype len gene-function)))
 
+;; CROSSOVER
+;; =========
+;;
 ;; This crossover function is independent of the encoding we are using.
 ;; It has the strenght of being able to change the mask vector. If we do so, we
 ;; can explore how different crossover points affect the performance of our GA.
@@ -51,6 +65,9 @@
         masked-gt2 (mapv * gt2 mask)]
     (mapv + masked-gt1 masked-gt2)))
 
+;; MASK GENERATORS
+;; ===============
+;;
 ;; The following functions are mask generators for the function crossover.
 ;; They will be passed from the evolve map :mask and :inv-mask key values.
 ;;
@@ -64,6 +81,9 @@
 (defn interleaved-mask [n] (vec (take n (interpose 0 (repeat 1)))))
 (defn inv-interleaved-mask [n] (vec (reverse (interleaved-mask n))))
 
+;; MUTATE
+;; ======
+;;
 ;; The mutation is used to mutate the genotypes of each individual after the
 ;; breeding of the next generation is done.
 ;; The function takes the genotype [gt] and goes through all the elmenets of it.
@@ -73,17 +93,25 @@
 ;; We are passing (gene-function) as a function parameter to abstact the
 ;; genotypes we are mutating.
 
-(defn mutate
-  "Takes a genotype [gt] and modifies it based on the mutation-rate [rate].
-  The rate input value must range between 0 and 1. To modify  one of the
-  elements it uses the [gene-function] function."
-  [gt rate gene-function]
+(defn full-scale-mutation
+  "Takes a genotype [gt] and modifies it based on the mutation provability
+  [provability]. The provability value must range between 0 and 1.
+  To modify  one of the elements it uses the [gene-function] function."
+  [gt provability gene-function]
   (loop [n 0 mutated-gt gt]
     (if (= n (count gt))
       mutated-gt
-      (if (<= (rand) rate)
-        (recur (inc n) (assoc mutated-gt n (gene-function)))
+      (if (<= (rand) provability)
+        (recur (inc n) (assoc mutated-gt n gene-function))
         (recur (inc n) mutated-gt)))))
+
+(defn local-mutate
+  [gt p gene-function]
+  (if (>= p (rand))
+    (assoc gt (rand-int (count gt)) gene-function)
+    gt))
+
+
 
 ;; FIXME: This function will be called once each generation. The most expensive
 ;; function is the fitness-function. It is called for each genotype each
@@ -237,7 +265,8 @@
         (first (sort-by first current-gen))
         (let [evaluated-gen (evaluate current-gen fitness-function)
               breeded-gen (breed-next-gen evaluated-gen mask 20)
-              mutated-gen (mapv #(mutate % mut-prov gene-function) breeded-gen)]
+              mutated-gen (mapv #(local-mutate % mut-prov gene-function)
+                                breeded-gen)]
           (if (= n (- generations 1))
             (recur (inc n) breeded-gen)
             (recur (inc n) mutated-gen)))))))

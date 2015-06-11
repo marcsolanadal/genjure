@@ -32,32 +32,9 @@
   (with-progress-reporting (bench
                              ;;(truncation-selection ep1 4) ;; 247.42 us
                              ;;(tournament-selection ep1 4) ;; 5.07 us
-                             (rank-selection ep1 4 0.6) ;; 5.982 us
+                             ;;(rank-selection ep1 4 0.6) ;; 5.982 us
+                             ;;(random-population2 1000 10 rand)
                              :verbose))
-
-  ;; Sample genotypes for performance testings
-  ;;(def gt1 (generate-genotype 10))
-  ;;(def gt2 (generate-genotype 10))
-
-  ;; (with-progress-reporting (bench
-  ;;                          (crossover gt1 gt2 [1 1 1 0 0 1 0 1 0 0])
-  ;;                           :verbose))
-  ;; 25.55us
-
-  ;; (with-progress-reporting (bench
-  ;;                           (mutate [1 1 1 1 1 1 1 1 1 1] 0.1)
-  ;;                           :verbose))
-  ;; 1.52us
-
-  ;;(defn generate-genotype1
-  ;;  [len]
-  ;;  (mapv #(* % (new-gene)) (vec (replicate len 1))))
-
-  ;; (with-progress-reporting (bench (generate-genotype 1000) :verbose))
-  ;; 542us
-
-  ;; (with-progress-reporting (bench (generate-genotype2 10) :verbose))
-  ;; 2.85us
 
 )
 
