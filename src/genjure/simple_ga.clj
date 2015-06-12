@@ -116,6 +116,16 @@
 ;; FIXME: This function will be called once each generation. The most expensive
 ;; function is the fitness-function. It is called for each genotype each
 ;; generation, so optimizing that function is the priority.
+;;
+;; We implemented three versions of this function. Due that this functions is
+;; heavaly used we wil use the most optimized implementation.
+;;
+;; Population used: (def population (random-population 1000 10 rand))
+;; Function tested: (evaluate population #(apply * %))
+;; Tested implementations:
+;;    loop/recur          34.83ms
+;;    juxt partial        971.1us   <-- Preferred solution
+;;    juxt no-partial     1.038ms
 
 (defn evaluate
   [population fitness-function]
@@ -127,6 +137,9 @@
                                     (fitness-function (nth population n))
                                     (nth population n))))
         eval-pop))))
+
+(defn evaluate2 [v f] (mapv (juxt (partial f) identity) v))
+(defn evaluate3 [v f] (mapv (juxt f identity) v))
 
 ;; In this simple implementation we used stead-state selection, where only the
 ;; best individuals are selected and breeded. The worst individuals are

@@ -1,6 +1,7 @@
 (ns genjure.simple-ga-test
   (:use midje.sweet)
-  (:require [genjure.simple-ga :refer :all]))
+  (:require [genjure.simple-ga :refer :all]
+            [genjure.misc :refer :all]))
 
 (facts "`generate-genotype`"
        (fact "returns a vector."
@@ -46,46 +47,23 @@
              (first (crossover gt1 gt2 [0 0 1 1])) => (first gt1)
              (last (crossover gt1 gt2 [1 1 0 0])) => (last gt1)))
 
-;; TODO: Define the random seed for the mutations.
-
+;; Seed fixing to avoid problems when testing.
 (def rng (java.util.Random. 10000))
 
-(. rng nextFloat)
+;; Mutation detection functions
+(defn mutation? [gt1 gt2]
+  (if (not= gt1 gt2) true false))
 
-(defmacro mean
-  [iterations function]
-  (loop [n 0 num-mutation 0]
-    (if (>= n iterations)
-      (float (/ num-mutation iterations))
-      (if (= (eval function) gt1)
-        (recur (inc n) num-mutation)
-        (recur (inc n) (inc num-mutation))))))
-
-
-(defmacro dofun
-  [fun]
-  (. rng nextFloat))
-
-(dotimes [n 4] (printf "%d\n" (dofun (* 2 n))))
-
-(mean 1000 (mutate gt1 0.5 (. rng nextFloat)))
-(mutate gt1 0.5 (. rng nextFloat))
-
-(dotimes [n 10]
-  (printf "n: %s
-          given-provability: %s
-          obtained-provability: %s\n"
-          n
-          (* n 0.05)
-          (mean 1000 (mutate gt1 0.1 rand))))
+(defn detect-mutation [gt p]
+  (mutation? gt (local-mutate gt p (. rng nextDouble))))
 
 (facts "`mutate`"
        (fact "mutates the genotype with a given provability."
-             (mutate gt1 0 rand) => [1 2 3 4]
-             (mutate gt1 100 rand) =not=> [1 2 3 4]
-
-             )
-       )
+             (mean 1000 (detect-mutation gt1 0.0)) => 0.0
+             (mean 1000 (detect-mutation gt1 0.3)) => 0.3
+             (mean 1000 (detect-mutation gt1 0.5)) => 0.5
+             (mean 1000 (detect-mutation gt1 0.6)) => 0.6
+             (mean 1000 (detect-mutation gt1 1.0)) => 1.0))
 
 
 
