@@ -54,8 +54,18 @@
 ;; This crossover function is independent of the encoding we are using.
 ;; It has the strenght of being able to change the mask vector. If we do so, we
 ;; can explore how different crossover points affect the performance of our GA.
+;;
+;; We implemented two versions of this function. This function will be heavely
+;; used in each iteration so we will focus in performance. TEttinger and
+;; justin_smit (freenode #clojure) helped me fined a more concsise and optimal
+;; way to cross the two genotypes.
 
-(defn crossover
+;; Function tested: (crossover [1 2 3 4] [4 3 2 1] [1 1 0 0])
+;; Tested implementations:
+;;    multiplication/addition    4.995us <-- Preferred solution
+;;    concise/nth                12.90us
+
+(defn crossover2
   "Produces a new vector based on the genotypes [gt1 gt2] taking the mask as
   the crossover guide {1 = copy, 0 = not-copy}. The genes from [gt2] are copyed
   to [gt1]."
@@ -64,6 +74,14 @@
         masked-gt1 (mapv * gt1 inv-mask)
         masked-gt2 (mapv * gt2 mask)]
     (mapv + masked-gt1 masked-gt2)))
+
+(defn crossover
+  "Produces a new vector based on the genotypes [gt1 gt2] taking the mask as
+  the crossover guide {1 = copy, 0 = not-copy}. The genes from [gt2] are copyed
+  to [gt1]."
+  [gt1 gt2 mask]
+  (mapv (fn [mask & choices] (nth choices mask)) mask gt1 gt2))
+
 
 ;; MASK GENERATORS
 ;; ===============
@@ -105,18 +123,14 @@
         (recur (inc n) (assoc mutated-gt n gene-function))
         (recur (inc n) mutated-gt)))))
 
-(defn local-mutate
-  [gt p gene-function]
-  (if (>= p (rand))
-    (assoc gt (rand-int (count gt)) gene-function)
-    gt))
+(defn mutate
+  "Takes a genotype [gt] and modifies it based on the mutation provability [p].
+  The provability must range between 0 and 1. If there is a mutation the
+  gene-function [f] will be used."
+  [gt p f]
+  (if (>= p (rand)) (assoc gt (rand-int (count gt)) f) gt))
 
 
-
-;; FIXME: This function will be called once each generation. The most expensive
-;; function is the fitness-function. It is called for each genotype each
-;; generation, so optimizing that function is the priority.
-;;
 ;; We implemented three versions of this function. Due that this functions is
 ;; heavaly used we wil use the most optimized implementation.
 ;;
@@ -128,18 +142,8 @@
 ;;    juxt no-partial     1.038ms
 
 (defn evaluate
-  [population fitness-function]
-  (let [pop-size (count population)]
-    (loop [n 0 eval-pop []]
-      (if (< n pop-size)
-        (recur (inc n)
-               (conj eval-pop (conj []
-                                    (fitness-function (nth population n))
-                                    (nth population n))))
-        eval-pop))))
-
-(defn evaluate2 [v f] (mapv (juxt (partial f) identity) v))
-(defn evaluate3 [v f] (mapv (juxt f identity) v))
+  ""
+  [v f] (mapv (juxt (partial f) identity) v))
 
 ;; In this simple implementation we used stead-state selection, where only the
 ;; best individuals are selected and breeded. The worst individuals are
@@ -278,7 +282,7 @@
         (first (sort-by first current-gen))
         (let [evaluated-gen (evaluate current-gen fitness-function)
               breeded-gen (breed-next-gen evaluated-gen mask 20)
-              mutated-gen (mapv #(local-mutate % mut-prov gene-function)
+              mutated-gen (mapv #(mutate % mut-prov gene-function)
                                 breeded-gen)]
           (if (= n (- generations 1))
             (recur (inc n) breeded-gen)
