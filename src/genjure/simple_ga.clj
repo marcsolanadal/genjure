@@ -64,24 +64,20 @@
 ;; Tested implementations:
 ;;    multiplication/addition    4.995us <-- Preferred solution
 ;;    concise/nth                12.90us
-
-(defn crossover2
-  "Produces a new vector based on the genotypes [gt1 gt2] taking the mask as
-  the crossover guide {1 = copy, 0 = not-copy}. The genes from [gt2] are copyed
-  to [gt1]."
-  [gt1 gt2 mask]
-  (let [inv-mask (mapv #(- 1 %) mask)
-        masked-gt1 (mapv * gt1 inv-mask)
-        masked-gt2 (mapv * gt2 mask)]
-    (mapv + masked-gt1 masked-gt2)))
+;;
+;; (defn crossover
+;;   [gt1 gt2 mask]
+;;   (let [inv-mask (mapv #(- 1 %) mask)
+;;         masked-gt1 (mapv * gt1 inv-mask)
+;;         masked-gt2 (mapv * gt2 mask)]
+;;     (mapv + masked-gt1 masked-gt2)))
 
 (defn crossover
   "Produces a new vector based on the genotypes [gt1 gt2] taking the mask as
   the crossover guide {1 = copy, 0 = not-copy}. The genes from [gt2] are copyed
   to [gt1]."
   [gt1 gt2 mask]
-  (mapv (fn [mask & choices] (nth choices mask)) mask gt1 gt2))
-
+  (mapv (fn [mask & genotypes] (nth genotypes mask)) mask gt1 gt2))
 
 ;; MASK GENERATORS
 ;; ===============
@@ -141,9 +137,8 @@
 ;;    juxt partial        971.1us   <-- Preferred solution
 ;;    juxt no-partial     1.038ms
 
-(defn evaluate
-  ""
-  [v f] (mapv (juxt (partial f) identity) v))
+(defn evaluate [v f] (mapv (partial f) v))
+
 
 ;; In this simple implementation we used stead-state selection, where only the
 ;; best individuals are selected and breeded. The worst individuals are

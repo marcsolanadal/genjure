@@ -25,10 +25,10 @@
 
   (/ (apply + (evolve confmap)) 10)
 
-  (def p1 (random-population  10 2 rand))
-  (def ep1 (evaluate p1 #(apply * %)))
-  (println ep1)
-  (tournament-selection ep1 4)
+  ;;(def p1 (random-population  10 2 rand))
+  ;;(def ep1 (evaluate p1 #(apply * %)))
+  ;;(println ep1)
+  ;;(tournament-selection ep1 4)
 
   (with-progress-reporting (bench
                              ;;(truncation-selection ep1 4) ;; 247.42 us
